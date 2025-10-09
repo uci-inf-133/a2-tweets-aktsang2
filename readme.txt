@@ -5,7 +5,7 @@
 */10
 - */3 Summarizing tweets
 - */4 Identifying the most popular activities
-- */3 Adding a text earch interface
+- */3 Adding a text to each interface
 
 2. How long, in hours, did it take you to complete this assignment?
 
@@ -19,5 +19,5 @@
 
 
 
-5. Is there anything special we need to know in order to run your code?
+5. Is there anything special we need to know to run your code?
 
