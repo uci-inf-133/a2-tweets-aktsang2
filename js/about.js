@@ -9,12 +9,42 @@ function parseTweets(runkeeper_tweets) {
 		return new Tweet(tweet.text, tweet.created_at);
 	});
 	
-	//This line modifies the DOM, searching for the tag with the numberTweets ID and updating the text.
-	//It works correctly, your task is to update the text of the other tags in the HTML file!
-	document.getElementById('numberTweets').innerText = tweet_array.length;	
-}
+	// Update total number of tweets
+	document.getElementById('numberTweets').innerText = tweet_array.length;
 
-//Wait for the DOM to load
-document.addEventListener('DOMContentLoaded', function (event) {
-	loadSavedRunkeeperTweets().then(parseTweets);
-});
+	// Helper function to safely update DOM elements
+	function updateElement(id, value) {
+		const element = document.getElementById(id);
+		if (element) {
+			element.innerText = value;
+		} else {
+			console.warn(`Element with id '${id}' not found`);
+		}
+	}
+
+	// Update first and last dates
+	if (tweet_array.length > 0) {
+		const sortedTweets = [...tweet_array].sort((a, b) => a.time - b.time);
+		updateElement('firstDate', sortedTweets[0].time.toLocaleDateString());
+		updateElement('lastDate', sortedTweets[sortedTweets.length - 1].time.toLocaleDateString());
+	} else {
+		updateElement('firstDate', 'N/A');
+		updateElement('lastDate', 'N/A');
+	}
+
+	// Update completed events statistics
+	const completedEvents = tweet_array.filter(tweet => tweet.source === 'completed_event');
+	updateElement('numberCompleted', completedEvents.length);
+	
+	const completedPercentage = tweet_array.length > 0 ? 
+		((completedEvents.length / tweet_array.length) * 100).toFixed(2) + '%' : '0%';
+	updateElement('completedPercentage', completedPercentage);
+
+	// Update written tweets statistics
+	const writtenTweets = tweet_array.filter(tweet => tweet.written);
+	updateElement('numberWritten', writtenTweets.length);
+	
+	const writtenPercentage = tweet_array.length > 0 ? 
+		((writtenTweets.length / tweet_array.length) * 100).toFixed(2) + '%' : '0%';
+	updateElement('writtenPercentage', writtenPercentage);
+}
