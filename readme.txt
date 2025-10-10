@@ -12,6 +12,7 @@ It took me 6 to 8 hours to complete this assignment.
 
 
 3. What online resources did you consult when completing this assignment? (list sites like StackOverflow or specific URLs for tutorials; describe queries to Generative AI or use of AI-based code completion)
+https://www.deepseek.com/en
 Vega-Lite Documentation: https://vega.github.io/vega-lite/
 Used for understanding visualization specifications and encoding options
 MDN Web Docs:
