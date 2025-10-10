@@ -29,4 +29,4 @@ I worked independently on this assignment.
 
 
 5. Is there anything special we need to know to run your code?
-No special requirements
+No special requirements were needed.
