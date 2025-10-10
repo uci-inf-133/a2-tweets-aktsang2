@@ -1,23 +1,24 @@
-function parseTweets(runkeeper_tweets) {
-    //Do not proceed if no tweets loaded
-    if(runkeeper_tweets === undefined) {
+ffunction parseTweets(runkeeper_tweets) {
+    if (runkeeper_tweets === undefined) {
         window.alert('No tweets returned');
         return;
     }
 
-    tweet_array = runkeeper_tweets.map(function(tweet) {
+    const tweet_array = runkeeper_tweets.map(function(tweet) {
         return new Tweet(tweet.text, tweet.created_at);
     });
 
     // Filter to only completed events for activity analysis
-    const completedEvents = tweet_array.filter(tweet => tweet.source === 'completed_event');
-    
-    // Update number of activities
+    const completedEvents = tweet_array.filter(tweet => 
+        tweet.source === 'completed_event' && 
+        tweet.activityType !== 'unknown' && 
+        tweet.distance > 0
+    );
+
+    // Count unique activity types
     const activityTypes = new Set();
     completedEvents.forEach(tweet => {
-        if (tweet.activityType && tweet.activityType !== 'unknown') {
-            activityTypes.add(tweet.activityType);
-        }
+        activityTypes.add(tweet.activityType);
     });
     document.getElementById('numberActivities').innerText = activityTypes.size;
 
@@ -25,9 +26,7 @@ function parseTweets(runkeeper_tweets) {
     const activityCounts = {};
     completedEvents.forEach(tweet => {
         const activity = tweet.activityType;
-        if (activity && activity !== 'unknown') {
-            activityCounts[activity] = (activityCounts[activity] || 0) + 1;
-        }
+        activityCounts[activity] = (activityCounts[activity] || 0) + 1;
     });
 
     // Find top 3 most common activities
@@ -36,6 +35,16 @@ function parseTweets(runkeeper_tweets) {
         .slice(0, 3);
 
     // Update DOM with top activities
+    updateTopActivities(topActivities);
+
+    // Create activity count visualization
+    createActivityCountChart(activityCounts);
+
+    // Analyze distances and create distance visualizations
+    analyzeActivityDistances(completedEvents, topActivities);
+}
+
+function updateTopActivities(topActivities) {
     if (topActivities.length >= 1) {
         document.getElementById('firstMost').innerText = topActivities[0];
     }
@@ -45,8 +54,10 @@ function parseTweets(runkeeper_tweets) {
     if (topActivities.length >= 3) {
         document.getElementById('thirdMost').innerText = topActivities[2];
     }
+}
 
-    // Create activity count visualization
+function createActivityCountChart(activityCounts) {
+    // Convert activity counts to array for visualization
     const activityData = Object.keys(activityCounts).map(activity => {
         return {
             activity: activity,
@@ -54,7 +65,10 @@ function parseTweets(runkeeper_tweets) {
         };
     });
 
-    activity_vis_spec = {
+    // Sort by count for better visualization
+    activityData.sort((a, b) => b.count - a.count);
+
+    const activity_vis_spec = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "description": "Number of tweets for each activity type",
         "data": {
@@ -66,7 +80,7 @@ function parseTweets(runkeeper_tweets) {
                 "field": "activity", 
                 "type": "nominal", 
                 "title": "Activity Type",
-                "sort": "-y"
+                "sort": "-y"  // Sort by count descending
             },
             "y": {
                 "field": "count", 
@@ -77,76 +91,116 @@ function parseTweets(runkeeper_tweets) {
                 "field": "activity",
                 "type": "nominal",
                 "legend": null
-            }
+            },
+            "tooltip": [
+                {"field": "activity", "type": "nominal", "title": "Activity"},
+                {"field": "count", "type": "quantitative", "title": "Count"}
+            ]
         }
     };
-    vegaEmbed('#activityVis', activity_vis_spec, {actions:false});
 
-    // Analyze distances for top 3 activities
-    analyzeActivityDistances(completedEvents, topActivities);
+    vegaEmbed('#activityVis', activity_vis_spec, {actions: false});
 }
 
 function analyzeActivityDistances(completedEvents, topActivities) {
     // Calculate average distances for each activity
     const activityAverages = {};
+    const activityData = {};
+    
     topActivities.forEach(activity => {
         const activityEvents = completedEvents.filter(tweet => 
-            tweet.activityType === activity && tweet.distance > 0
+            tweet.activityType === activity
         );
+        
         const totalDistance = activityEvents.reduce((sum, tweet) => sum + tweet.distance, 0);
         activityAverages[activity] = activityEvents.length > 0 ? 
             totalDistance / activityEvents.length : 0;
+            
+        activityData[activity] = activityEvents;
     });
 
     // Find longest and shortest activities
-    const sortedByDistance = Object.keys(activityAverages)
-        .sort((a, b) => activityAverages[b] - activityAverages[a]);
-    
-    if (sortedByDistance.length >= 1) {
-        document.getElementById('longestActivityType').innerText = sortedByDistance[0];
-    }
-    if (sortedByDistance.length >= 1) {
-        document.getElementById('shortestActivityType').innerText = 
-            sortedByDistance[sortedByDistance.length - 1];
-    }
+    updateLongestShortestActivities(activityAverages);
 
     // Prepare data for distance visualization
+    const distanceData = prepareDistanceData(completedEvents, topActivities);
+
+    // Analyze weekend vs weekday patterns
+    analyzeWeekdayWeekendPatterns(distanceData);
+
+    // Create distance visualizations
+    createDistanceVisualizations(distanceData);
+}
+
+function updateLongestShortestActivities(activityAverages) {
+    const sortedActivities = Object.keys(activityAverages)
+        .sort((a, b) => activityAverages[b] - activityAverages[a]);
+    
+    if (sortedActivities.length >= 1) {
+        document.getElementById('longestActivityType').innerText = sortedActivities[0];
+    }
+    if (sortedActivities.length >= 1) {
+        document.getElementById('shortestActivityType').innerText = 
+            sortedActivities[sortedActivities.length - 1];
+    }
+}
+
+function prepareDistanceData(completedEvents, topActivities) {
     const distanceData = [];
+    
     completedEvents.forEach(tweet => {
-        if (topActivities.includes(tweet.activityType) && tweet.distance > 0) {
+        if (topActivities.includes(tweet.activityType)) {
             const dayOfWeek = tweet.time.getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0 = Sunday, 6 = Saturday
+            const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
             
             distanceData.push({
                 activity: tweet.activityType,
                 day: dayOfWeek,
-                dayName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek],
+                dayName: dayName,
                 distance: tweet.distance,
-                isWeekend: isWeekend
+                isWeekend: isWeekend,
+                date: tweet.time.toISOString().split('T')[0]
             });
         }
     });
-
-    // Calculate weekend vs weekday averages
-    const weekendDistances = distanceData.filter(d => d.isWeekend).map(d => d.distance);
-    const weekdayDistances = distanceData.filter(d => !d.isWeekend).map(d => d.distance);
     
-    const avgWeekend = weekendDistances.length > 0 ? 
-        weekendDistances.reduce((a, b) => a + b) / weekendDistances.length : 0;
-    const avgWeekday = weekdayDistances.length > 0 ? 
-        weekdayDistances.reduce((a, b) => a + b) / weekdayDistances.length : 0;
+    return distanceData;
+}
 
+function analyzeWeekdayWeekendPatterns(distanceData) {
+    if (distanceData.length === 0) return;
+    
+    const weekendData = distanceData.filter(d => d.isWeekend);
+    const weekdayData = distanceData.filter(d => !d.isWeekend);
+    
+    const avgWeekend = weekendData.length > 0 ? 
+        weekendData.reduce((sum, d) => sum + d.distance, 0) / weekendData.length : 0;
+        
+    const avgWeekday = weekdayData.length > 0 ? 
+        weekdayData.reduce((sum, d) => sum + d.distance, 0) / weekdayData.length : 0;
+    
     document.getElementById('weekdayOrWeekendLonger').innerText = 
         avgWeekend > avgWeekday ? 'weekends' : 'weekdays';
+}
 
-    // Create individual points visualization
+function createDistanceVisualizations(distanceData) {
+    if (distanceData.length === 0) return;
+    
+    // Individual points specification
     const individualSpec = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "description": "Distances of top activities by day of week",
+        "description": "Distances of top activities by day of week (individual points)",
+        "width": 600,
+        "height": 400,
         "data": {
             "values": distanceData
         },
-        "mark": "point",
+        "mark": {
+            "type": "point",
+            "opacity": 0.6,
+            "size": 50
+        },
         "encoding": {
             "x": {
                 "field": "dayName", 
@@ -172,10 +226,12 @@ function analyzeActivityDistances(completedEvents, topActivities) {
         }
     };
 
-    // Create aggregated (mean) visualization
+    // Aggregated (mean) specification
     const aggregatedSpec = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "description": "Average distances of top activities by day of week",
+        "width": 600,
+        "height": 400,
         "data": {
             "values": distanceData
         },
@@ -198,7 +254,10 @@ function analyzeActivityDistances(completedEvents, topActivities) {
                 "type": "nominal", 
                 "title": "Activity Type"
             },
-            "xOffset": {"field": "activity", "type": "nominal"},
+            "xOffset": {
+                "field": "activity", 
+                "type": "nominal"
+            },
             "tooltip": [
                 {"field": "activity", "type": "nominal", "title": "Activity"},
                 {"field": "dayName", "type": "ordinal", "title": "Day"},
@@ -208,22 +267,26 @@ function analyzeActivityDistances(completedEvents, topActivities) {
     };
 
     // Embed the individual points visualization by default
-    vegaEmbed('#distanceVis', individualSpec, {actions:false});
+    vegaEmbed('#distanceVis', individualSpec, {actions: false});
     
     // Set up button to toggle between views
-    document.getElementById('aggregate').addEventListener('click', function() {
-        const button = this;
-        if (button.textContent === 'Show means') {
-            vegaEmbed('#distanceVis', aggregatedSpec, {actions:false});
-            button.textContent = 'Show individual points';
-        } else {
-            vegaEmbed('#distanceVis', individualSpec, {actions:false});
-            button.textContent = 'Show means';
-        }
-    });
+    const aggregateButton = document.getElementById('aggregate');
+    if (aggregateButton) {
+        aggregateButton.addEventListener('click', function() {
+            const currentView = this.textContent;
+            
+            if (currentView === 'Show means') {
+                vegaEmbed('#distanceVis', aggregatedSpec, {actions: false});
+                this.textContent = 'Show individual points';
+            } else {
+                vegaEmbed('#distanceVis', individualSpec, {actions: false});
+                this.textContent = 'Show means';
+            }
+        });
+    }
 }
 
-//Wait for the DOM to load
+// Wait for the DOM to load
 document.addEventListener('DOMContentLoaded', function (event) {
     loadSavedRunkeeperTweets().then(parseTweets);
 });
